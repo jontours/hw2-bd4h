@@ -25,7 +25,7 @@ CREATE EXTERNAL TABLE events (
   value DOUBLE)
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/input/sample_events';
+LOCATION '/input/events';
 
 -- create mortality events table 
 DROP TABLE IF EXISTS mortality;
@@ -35,7 +35,7 @@ CREATE EXTERNAL TABLE mortality (
   label INT)
 ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
 STORED AS TEXTFILE
-LOCATION '/input/sample_mortality';
+LOCATION '/input/mortality';
 
 -- ******************************************************
 -- Task 1:
@@ -173,11 +173,3 @@ select event_id, count(*) as event_count from dead_events where event_id RLIKE '
 
 ---- med
 select event_id, count(*) as event_count from dead_events where event_id RLIKE 'DRUG' group by event_id order by event_count desc limit 5;
-
-
-
-
-
-
-
-
