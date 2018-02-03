@@ -97,7 +97,71 @@ features = JOIN featureswithid BY eventid, all_features by eventid;
 features = FOREACH features GENERATE featureswithid::patientid as patientid, all_features::indexes::index as idx, featureswithid::featurevalue as featurevalue;
 
 --TEST-4
+-- features = ORDER features BY patientid, idx;
+-- STORE features INTO 'features_map' USING PigStorage(',');
+
+-- ***************************************************************************
+-- Normalize the values using min-max normalization
+-- Use DOUBLE precision
+-- ***************************************************************************
+-- maxvalues = GROUP features by idx -- group events by idx and compute the maximum feature value in each group. I t is -- of the form (idx, maxvalue)
+maxvalues = GROUP features by idx;
+-- dates = FOREACH patient_group GENERATE group as patientid, MAX(aliveevents.etimestamp) as index_date;
+maxvalues = FOREACH maxvalues GENERATE group as idx, MAX(features.featurevalue) as maxvalue;
+normalized = JOIN features by idx, maxvalues by idx;
+-- compute the final set of normalized features of the form (patientid, idx, normalizedfeaturevalue)
+features = FOREACH normalized GENERATE features::patientid as patientid, maxvalues::idx as idx, ((double)features::featurevalue / (double)maxvalues::maxvalue) as normalizedfeaturevalue;
+
+--TEST-5
 features = ORDER features BY patientid, idx;
-STORE features INTO 'features_map' USING PigStorage(',');
+-- STORE features INTO 'features_normalized' USING PigStorage(',');
+
+-- ***************************************************************************
+-- Generate features in svmlight format
+-- features is of the form (patientid, idx, normalizedfeaturevalue) and is the output of the previous step
+-- e.g.  1,1,1.0
+--  	 1,3,0.8
+--	     2,1,0.5
+--       3,3,1.0
+-- ***************************************************************************
+
+grpd = GROUP features BY patientid;
+grpd_order = ORDER grpd BY $0;
+features = FOREACH grpd_order
+{
+    sorted = ORDER features BY idx;
+    generate group as patientid, utils.bag_to_svmlight(sorted) as sparsefeature;
+}
+
+-- ***************************************************************************
+-- Split into train and test set
+-- labels is of the form (patientid, label) and contains all patientids followed by label of 1 for dead and 0 for alive
+-- e.g. 1,1
+--	2,0
+--      3,1
+-- ***************************************************************************
+dump features;
+
+labels = FOREACH features GENERATE patientid, label-- create it of the form (patientid, label) for dead and alive patients
+
+--Generate sparsefeature vector relation
+samples = JOIN features BY patientid, labels BY patientid;
+samples = DISTINCT samples PARALLEL 1;
+samples = ORDER samples BY $0;
+samples = FOREACH samples GENERATE $3 AS label, $1 AS sparsefeature;
+
+--TEST-6
+STORE samples INTO 'samples' USING PigStorage(' ');
+
+-- randomly split data for training and testing
+DEFINE rand_gen RANDOM('6505');
+samples = FOREACH samples GENERATE rand_gen() as assignmentkey, *;
+SPLIT samples INTO testing IF assignmentkey <= 0.20, training OTHERWISE;
+training = FOREACH training GENERATE $1..;
+testing = FOREACH testing GENERATE $1..;
+
+-- save training and tesing data
+STORE testing INTO 'testing' USING PigStorage(' ');
+STORE training INTO 'training' USING PigStorage(' ');
 
 
