@@ -76,8 +76,8 @@ grouped_events = GROUP filtered BY (patientid, eventid);
 featureswithid = FOREACH grouped_events GENERATE FLATTEN(group) as (patientid, eventid), COUNT(filtered.label) as featurevalue;
 
 --TEST-3
--- featureswithid = ORDER featureswithid BY patientid, eventid;
--- STORE featureswithid INTO 'features_aggregate' USING PigStorage(',');
+--featureswithid = ORDER featureswithid BY patientid, eventid;
+--STORE featureswithid INTO 'features_aggregate' USING PigStorage(',');
 
 -- ***************************************************************************
 -- Generate feature mapping
@@ -113,7 +113,7 @@ normalized = JOIN features by idx, maxvalues by idx;
 features = FOREACH normalized GENERATE features::patientid as patientid, maxvalues::idx as idx, ((double)features::featurevalue / (double)maxvalues::maxvalue) as normalizedfeaturevalue;
 
 --TEST-5
-features = ORDER features BY patientid, idx;
+-- features = ORDER features BY patientid, idx;
 -- STORE features INTO 'features_normalized' USING PigStorage(',');
 
 -- ***************************************************************************
@@ -140,9 +140,15 @@ features = FOREACH grpd_order
 --	2,0
 --      3,1
 -- ***************************************************************************
-dump features;
 
-labels = FOREACH features GENERATE patientid, label-- create it of the form (patientid, label) for dead and alive patients
+patients = FOREACH aliveevents GENERATE patientid;
+
+distinct_patients = DISTINCT patients;
+alive_labels = FOREACH distinct_patients GENERATE patientid, 0 as label;
+
+dead_labels = FOREACH mortality GENERATE patientid, label;
+
+labels = UNION alive_labels, dead_labels;
 
 --Generate sparsefeature vector relation
 samples = JOIN features BY patientid, labels BY patientid;
