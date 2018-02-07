@@ -12,6 +12,8 @@ from sklearn.datasets import load_svmlight_file
 import matplotlib
 matplotlib.use('Agg')
 
+import numpy as np
+
 import matplotlib.pyplot as plt
 
 from lrsgd import LogisticRegressionSGD
@@ -33,7 +35,11 @@ def predict_prob(classifiers, X):
     predict the probability of positive label.
     (Return the average obtained from all the classifiers)
     """
-    pass
+    total = 0.0
+    for classifier in classifiers:
+        y_prob = classifier.predict_prob(X)
+        total += y_prob
+    return total / len(classifiers)
 
 
 if __name__ == '__main__':

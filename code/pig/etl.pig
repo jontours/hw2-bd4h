@@ -18,13 +18,13 @@
 REGISTER utils.py USING jython AS utils;
 
 -- load events file
-events = LOAD '../sample_test/sample_events.csv' USING PigStorage(',') AS (patientid:int, eventid:chararray, eventdesc:chararray, timestamp:chararray, value:float);
+events = LOAD '../../data/events.csv' USING PigStorage(',') AS (patientid:int, eventid:chararray, eventdesc:chararray, timestamp:chararray, value:float);
 
 -- select required columns from events
 events = FOREACH events GENERATE patientid, eventid, ToDate(timestamp, 'yyyy-MM-dd') AS etimestamp, value;
 
 -- load mortality file
-mortality = LOAD '../sample_test/sample_mortality.csv' USING PigStorage(',') as (patientid:int, timestamp:chararray, label:int);
+mortality = LOAD '../../data/mortality.csv' USING PigStorage(',') as (patientid:int, timestamp:chararray, label:int);
 
 mortality = FOREACH mortality GENERATE patientid, ToDate(timestamp, 'yyyy-MM-dd') AS mtimestamp, label;
 
@@ -49,10 +49,10 @@ aliveevents = FOREACH aliveevents_with_dates GENERATE aliveevents::events::patie
 
 
 --TEST-1
--- deadevents = ORDER deadevents BY patientid, eventid;
--- aliveevents = ORDER aliveevents BY patientid, eventid;
--- STORE aliveevents INTO 'aliveevents' USING PigStorage(',');
--- STORE deadevents INTO 'deadevents' USING PigStorage(',');
+deadevents = ORDER deadevents BY patientid, eventid;
+aliveevents = ORDER aliveevents BY patientid, eventid;
+STORE aliveevents INTO 'aliveevents' USING PigStorage(',');
+STORE deadevents INTO 'deadevents' USING PigStorage(',');
 
 -- ***************************************************************************
 -- Filter events within the observation window and remove events with missing values
@@ -64,10 +64,10 @@ filtered = FILTER allevents BY time_difference <= 2000;
 filtered = FILTER filtered BY value is not null;
 
 --TEST-2
--- filteredgrpd = GROUP filtered BY 1;
--- filtered = FOREACH filteredgrpd GENERATE FLATTEN(filtered);
--- filtered = ORDER filtered BY patientid, eventid,time_difference;
--- STORE filtered INTO 'filtered' USING PigStorage(',');
+filteredgrpd = GROUP filtered BY 1;
+filtered = FOREACH filteredgrpd GENERATE FLATTEN(filtered);
+filtered = ORDER filtered BY patientid, eventid,time_difference;
+STORE filtered INTO 'filtered' USING PigStorage(',');
 
 -- ***************************************************************************
 -- Aggregate events to create features
@@ -76,8 +76,8 @@ grouped_events = GROUP filtered BY (patientid, eventid);
 featureswithid = FOREACH grouped_events GENERATE FLATTEN(group) as (patientid, eventid), COUNT(filtered.label) as featurevalue;
 
 --TEST-3
---featureswithid = ORDER featureswithid BY patientid, eventid;
---STORE featureswithid INTO 'features_aggregate' USING PigStorage(',');
+featureswithid = ORDER featureswithid BY patientid, eventid;
+STORE featureswithid INTO 'features_aggregate' USING PigStorage(',');
 
 -- ***************************************************************************
 -- Generate feature mapping
@@ -89,32 +89,27 @@ distinct_features = ORDER distinct_features by eventid;
 features_by_number = GROUP distinct_features by 1;
 indexed_features_by_number = FOREACH features_by_number GENERATE utils.bag_to_indexed(distinct_features);
 all_features = FOREACH indexed_features_by_number GENERATE FLATTEN(indexes);
--- STORE all_features INTO 'features' using PigStorage(' ');
-
--- features = -- perform join of featureswithid and all_features by eventid and replace eventid with idx. It is of the -- form (patientid, idx, featurevalue)
+STORE all_features INTO 'features' using PigStorage(' ');
 
 features = JOIN featureswithid BY eventid, all_features by eventid;
 features = FOREACH features GENERATE featureswithid::patientid as patientid, all_features::indexes::index as idx, featureswithid::featurevalue as featurevalue;
 
 --TEST-4
--- features = ORDER features BY patientid, idx;
--- STORE features INTO 'features_map' USING PigStorage(',');
+features = ORDER features BY patientid, idx;
+STORE features INTO 'features_map' USING PigStorage(',');
 
 -- ***************************************************************************
 -- Normalize the values using min-max normalization
 -- Use DOUBLE precision
 -- ***************************************************************************
--- maxvalues = GROUP features by idx -- group events by idx and compute the maximum feature value in each group. I t is -- of the form (idx, maxvalue)
 maxvalues = GROUP features by idx;
--- dates = FOREACH patient_group GENERATE group as patientid, MAX(aliveevents.etimestamp) as index_date;
 maxvalues = FOREACH maxvalues GENERATE group as idx, MAX(features.featurevalue) as maxvalue;
 normalized = JOIN features by idx, maxvalues by idx;
--- compute the final set of normalized features of the form (patientid, idx, normalizedfeaturevalue)
 features = FOREACH normalized GENERATE features::patientid as patientid, maxvalues::idx as idx, ((double)features::featurevalue / (double)maxvalues::maxvalue) as normalizedfeaturevalue;
 
 --TEST-5
--- features = ORDER features BY patientid, idx;
--- STORE features INTO 'features_normalized' USING PigStorage(',');
+features = ORDER features BY patientid, idx;
+STORE features INTO 'features_normalized' USING PigStorage(',');
 
 -- ***************************************************************************
 -- Generate features in svmlight format

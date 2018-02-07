@@ -29,6 +29,7 @@ if __name__ == '__main__':
         options.eta, options.C, options.n_feature)
 
     for X, y in parse_svm_light_data(sys.stdin):
+
         classifier.fit(X, y)
 
     with open(options.path, "wb") as f:
